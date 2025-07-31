@@ -1,5 +1,5 @@
 import express from 'express';
-import { registerUser, verifyOtp, loginUser, resendOtp, getAllUsers } from '../Controllers/userController.js';
+import { registerUser, verifyOtp, loginUser, resendOtp, getAllUsers } from '../Controllers/userController.js'; // <-- Capital 'C' for Controllers
 import { protect } from '../middleware/authMiddleware.js'; // Import your auth middleware
 
 const router = express.Router();
