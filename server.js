@@ -30,9 +30,15 @@ mongoose.connect(process.env.MONGO_URI, {
 const httpServer = http.createServer(app);
 
 // Initialize Socket.IO with the HTTP server
+// const io = new Server(httpServer, {
+//     cors: {
+//         origin: "http://localhost:3000", // Allow your frontend to connect
+//         methods: ["GET", "POST"]
+//     }
+// });
 const io = new Server(httpServer, {
     cors: {
-        origin: "http://localhost:3000", // Allow your frontend to connect
+        origin: process.env.FRONTEND_URL, // <-- Changed to use environment variable
         methods: ["GET", "POST"]
     }
 });
