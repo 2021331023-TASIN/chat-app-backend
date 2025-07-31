@@ -1,5 +1,5 @@
 import express from 'express';
-import { registerUser, verifyOtp, loginUser, resendOtp, getAllUsers } from '../controllers/userController.js';
+import { registerUser, verifyOtp, loginUser, resendOtp, getAllUsers } from '../Controllers/userController.js';
 import { protect } from '../middleware/authMiddleware.js'; // Import your auth middleware
 
 const router = express.Router();
