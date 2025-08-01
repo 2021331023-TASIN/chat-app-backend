@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import otpGenerator from 'otp-generator';
 import { sendOtpEmail } from '../utils/sendEmails.js';
+import { io } from '../socket/socket.js'; // Import io from the new socket setup
 
 // Controller to handle user registration
 const registerUser = async (req, res) => {
@@ -159,7 +160,7 @@ const getMessages = async (req, res) => {
                 { senderId: currentUserId, receiverId: otherUserId },
                 { senderId: otherUserId, receiverId: currentUserId },
             ],
-        }).sort({ createdAt: 1 }); // Sort by creation date
+        }).sort({ createdAt: 1 });
         
         res.status(200).json(messages);
     } catch (error) {
@@ -168,4 +169,36 @@ const getMessages = async (req, res) => {
     }
 };
 
-export { registerUser, verifyOtp, loginUser, resendOtp, getAllUsers, getMessages };
+// Controller to send a new message
+const sendMessage = async (req, res) => {
+    try {
+        const { message } = req.body;
+        const { otherUserId } = req.params;
+        const senderId = req.user.id;
+        const senderUsername = req.user.username;
+
+        const newMessage = new Message({
+            senderId,
+            senderUsername,
+            receiverId: otherUserId,
+            receiverUsername: await User.findById(otherUserId).select('username'),
+            text: message,
+        });
+
+        await newMessage.save();
+
+        // Get the recipient's socket ID from the onlineUsers map
+        const receiverSocketId = onlineUsers.get(otherUserId);
+        if (receiverSocketId) {
+            // Emit the new message to the recipient in real-time
+            io.to(receiverSocketId).emit('newMessage', newMessage);
+        }
+
+        res.status(201).json(newMessage);
+    } catch (error) {
+        console.error('Error in sendMessage:', error);
+        res.status(500).json({ message: 'Server error.' });
+    }
+};
+
+export { registerUser, verifyOtp, loginUser, resendOtp, getAllUsers, getMessages, sendMessage };
