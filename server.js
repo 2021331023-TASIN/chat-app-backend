@@ -5,7 +5,6 @@ import dotenv from 'dotenv';
 import cors from 'cors';
 import { Server } from 'socket.io';
 import http from 'http';
-// Import the Message and User models
 import Message from './Models/Message.js';
 import User from './Models/User.js';
 
@@ -32,10 +31,8 @@ const connectDB = async () => {
     }
 };
 
-// Create an HTTP server from the Express app
 const httpServer = http.createServer(app);
 
-// Initialize Socket.IO with the HTTP server
 const io = new Server(httpServer, {
     cors: {
         origin: FRONTEND_URL,
@@ -43,25 +40,20 @@ const io = new Server(httpServer, {
     }
 });
 
-// Map to store online users and their socket IDs
 const onlineUsers = new Map();
 
-// Socket.IO connection handling
 io.on('connection', (socket) => {
     console.log(`New user connected: ${socket.id}`);
 
-    // Listen for 'userOnline' event to track which user is connected
     socket.on('userOnline', (userId) => {
         onlineUsers.set(userId, socket.id);
         console.log(`User ${userId} is now online. Socket ID: ${socket.id}`);
     });
 
-    // Listen for 'sendMessage' event from the client
     socket.on('sendMessage', async (messageData) => {
         try {
             console.log('Received message to send:', messageData);
 
-            // Fetch user details to get the username
             const sender = await User.findById(messageData.senderId);
             const receiver = await User.findById(messageData.receiverId);
 
@@ -70,7 +62,6 @@ io.on('connection', (socket) => {
                 return;
             }
 
-            // Create a new message in the database
             const newMessage = await Message.create({
                 senderId: messageData.senderId,
                 senderUsername: sender.username,
@@ -79,10 +70,8 @@ io.on('connection', (socket) => {
                 text: messageData.text,
             });
 
-            // Get the recipient's socket ID from our map
             const receiverSocketId = onlineUsers.get(messageData.receiverId);
 
-            // Prepare the full message object to broadcast
             const fullMessage = {
                 _id: newMessage._id,
                 senderId: newMessage.senderId,
@@ -92,12 +81,10 @@ io.on('connection', (socket) => {
                 timestamp: newMessage.createdAt,
             };
 
-            // Broadcast the full message object to the recipient if they are online
             if (receiverSocketId) {
                 io.to(receiverSocketId).emit('receiveMessage', fullMessage);
             }
 
-            // Also broadcast the message back to the sender
             const senderSocketId = onlineUsers.get(messageData.senderId);
             if (senderSocketId) {
                 io.to(senderSocketId).emit('receiveMessage', fullMessage);
@@ -107,10 +94,8 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Handle user disconnect
     socket.on('disconnect', () => {
         console.log(`User disconnected: ${socket.id}`);
-        // Find and remove the user from the online map
         for (let [key, value] of onlineUsers.entries()) {
             if (value === socket.id) {
                 onlineUsers.delete(key);
@@ -120,17 +105,14 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Handle explicit user offline event (e.g., on logout)
     socket.on('userOffline', (userId) => {
         onlineUsers.delete(userId);
         console.log(`User ${userId} is now offline.`);
     });
 });
 
-// API routes
 app.use('/api/users', userRoutes);
 
-// Start server and connect to DB
 connectDB().then(() => {
     httpServer.listen(PORT, () => {
         console.log(`🌐 Server listening on port ${PORT}`);

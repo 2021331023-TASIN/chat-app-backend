@@ -1,60 +1,51 @@
 import User from '../Models/User.js';
+import Message from '../Models/Message.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { sendOtpEmail } from '../Utils/sendEmails.js';
-import dotenv from 'dotenv';
-// NEW IMPORT: Import the Message model
-import Message from '../Models/Message.js';
+import otpGenerator from 'otp-generator';
+import { sendOtpEmail } from '../utils/sendEmails.js';
 
-dotenv.config();
-
-// Helper to generate OTP
-const generateOtp = () => Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit OTP
-
-// @desc    Register a new user
-// @route   POST /api/users/register
-// @access  Public
-export const registerUser = async (req, res) => {
-    const { username, email, password } = req.body;
-
+// Controller to handle user registration
+const registerUser = async (req, res) => {
     try {
-        let user = await User.findOne({ email });
-
-        if (user) {
-            if (!user.isVerified) {
-                user.password = await bcrypt.hash(password, 10);
-                user.otp = generateOtp();
-                user.otpExpires = Date.now() + 3600000;
-                await user.save();
-
-                await sendOtpEmail(email, user.otp);
-                return res.status(400).json({ message: 'User already registered but not verified. A new OTP has been sent to your email.' });
-            }
-            return res.status(400).json({ message: 'User already registered and verified.' });
+        const { username, email, password } = req.body;
+        if (!username || !email || !password) {
+            return res.status(400).json({ message: 'All fields are required.' });
         }
 
-        user = new User({ username, email, password });
-        const salt = await bcrypt.genSalt(10);
-        user.password = await bcrypt.hash(password, salt);
-        user.otp = generateOtp();
-        user.otpExpires = Date.now() + 3600000;
-        await user.save();
-        await sendOtpEmail(user.email, user.otp);
+        const existingUser = await User.findOne({ email });
+        if (existingUser) {
+            return res.status(409).json({ message: 'User with this email already exists.' });
+        }
 
-        res.status(201).json({ message: 'User registered successfully. OTP sent to your email for verification.' });
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+
+        const otp = otpGenerator.generate(6, { digits: true, lowerCaseAlphabets: false, upperCaseAlphabets: false, specialChars: false });
+        const otpExpires = Date.now() + 3600000; // OTP expires in 1 hour
+
+        const newUser = new User({
+            username,
+            email,
+            password: hashedPassword,
+            otp,
+            otpExpires
+        });
+
+        await newUser.save();
+        await sendOtpEmail(newUser.email, otp);
+
+        res.status(201).json({ message: 'User registered successfully. Please check your email for OTP.' });
     } catch (error) {
-        console.error('Registration error:', error.message);
+        console.error('Error in registerUser:', error);
         res.status(500).json({ message: 'Server error during registration.' });
     }
 };
 
-// @desc    Verify OTP
-// @route   POST /api/users/verify-otp
-// @access  Public
-export const verifyOtp = async (req, res) => {
-    const { email, otp } = req.body;
-
+// Controller to verify OTP
+const verifyOtp = async (req, res) => {
     try {
+        const { email, otp } = req.body;
         const user = await User.findOne({ email });
 
         if (!user) {
@@ -62,94 +53,29 @@ export const verifyOtp = async (req, res) => {
         }
 
         if (user.isVerified) {
-            return res.status(400).json({ message: 'Email already verified.' });
+            return res.status(400).json({ message: 'User is already verified.' });
         }
 
-        if (user.otp !== otp) {
-            return res.status(400).json({ message: 'Invalid OTP.' });
-        }
-
-        if (user.otpExpires < Date.now()) {
-            return res.status(400).json({ message: 'OTP has expired. Please request a new one.' });
+        if (user.otp !== otp || user.otpExpires < Date.now()) {
+            return res.status(400).json({ message: 'Invalid or expired OTP.' });
         }
 
         user.isVerified = true;
-        user.otp = undefined;
+        user.otp = undefined; // Clear OTP after successful verification
         user.otpExpires = undefined;
         await user.save();
 
-        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
-
-        res.status(200).json({
-            message: 'Email verified successfully. You are now logged in.',
-            token,
-            user: {
-                id: user._id,
-                username: user.username,
-                email: user.email,
-                isVerified: user.isVerified
-            }
-        });
+        res.status(200).json({ message: 'OTP verified successfully.' });
     } catch (error) {
-        console.error('OTP verification error:', error.message);
+        console.error('Error in verifyOtp:', error);
         res.status(500).json({ message: 'Server error during OTP verification.' });
     }
 };
 
-// @desc    Authenticate user & get token
-// @route   POST /api/users/login
-// @access  Public
-export const loginUser = async (req, res) => {
-    const { email, password } = req.body;
-
+// Controller to resend OTP
+const resendOtp = async (req, res) => {
     try {
-        const user = await User.findOne({ email });
-
-        if (!user) {
-            return res.status(400).json({ message: 'Invalid credentials. User not found.' });
-        }
-
-        if (!user.isVerified) {
-            user.otp = generateOtp();
-            user.otpExpires = Date.now() + 3600000;
-            await user.save();
-            await sendOtpEmail(email, user.otp);
-
-            return res.status(403).json({ message: 'Please verify your email address. A new OTP has been sent.' });
-        }
-
-        const isMatch = await bcrypt.compare(password, user.password);
-
-        if (!isMatch) {
-            return res.status(400).json({ message: 'Invalid credentials. Password incorrect.' });
-        }
-
-        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
-
-        res.status(200).json({
-            message: 'Logged in successfully.',
-            token,
-            user: {
-                id: user._id,
-                username: user.username,
-                email: user.email,
-                isVerified: user.isVerified
-            }
-        });
-
-    } catch (error) {
-        console.error('Login error:', error.message);
-        res.status(500).json({ message: 'Server error during login.' });
-    }
-};
-
-// @desc    Resend OTP
-// @route   POST /api/users/resend-otp
-// @access  Public
-export const resendOtp = async (req, res) => {
-    const { email } = req.body;
-
-    try {
+        const { email } = req.body;
         const user = await User.findOne({ email });
 
         if (!user) {
@@ -157,57 +83,89 @@ export const resendOtp = async (req, res) => {
         }
 
         if (user.isVerified) {
-            return res.status(400).json({ message: 'Email is already verified. Please proceed to login.' });
+            return res.status(400).json({ message: 'User is already verified.' });
         }
 
-        user.otp = generateOtp();
-        user.otpExpires = Date.now() + 3600000;
+        const otp = otpGenerator.generate(6, { digits: true, lowerCaseAlphabets: false, upperCaseAlphabets: false, specialChars: false });
+        user.otp = otp;
+        user.otpExpires = Date.now() + 3600000; // New OTP expires in 1 hour
         await user.save();
-        await sendOtpEmail(user.email, user.otp);
+
+        await sendOtpEmail(user.email, otp);
 
         res.status(200).json({ message: 'New OTP sent to your email.' });
-
     } catch (error) {
-        console.error('Resend OTP error:', error.message);
-        res.status(500).json({ message: 'Server error during OTP resend.' });
+        console.error('Error in resendOtp:', error);
+        res.status(500).json({ message: 'Failed to resend OTP.' });
     }
 };
 
-// @desc    Get all registered users (for chat list)
-// @route   GET /api/users/all-users
-// @access  Private (requires token)
-export const getAllUsers = async (req, res) => {
+// Controller to handle user login
+const loginUser = async (req, res) => {
     try {
-        const currentUserId = req.user.id;
-        const users = await User.find({ _id: { $ne: currentUserId }, isVerified: true })
-            .select('-password -otp -otpExpires -isVerified -createdAt -updatedAt');
+        const { email, password } = req.body;
+        const user = await User.findOne({ email });
 
+        if (!user) {
+            return res.status(404).json({ message: 'Invalid credentials.' });
+        }
+
+        if (!user.isVerified) {
+            return res.status(401).json({ message: 'Please verify your email with OTP first.' });
+        }
+
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) {
+            return res.status(400).json({ message: 'Invalid credentials.' });
+        }
+
+        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+            expiresIn: '1h',
+        });
+
+        res.status(200).json({
+            token,
+            user: {
+                id: user._id,
+                username: user.username,
+                email: user.email,
+            },
+        });
+    } catch (error) {
+        console.error('Error in loginUser:', error);
+        res.status(500).json({ message: 'Server error during login.' });
+    }
+};
+
+// Controller to get all users
+const getAllUsers = async (req, res) => {
+    try {
+        const users = await User.find({ _id: { $ne: req.user.id } }).select('-password -otp -otpExpires -isVerified');
         res.status(200).json(users);
     } catch (error) {
-        console.error("Error fetching all users:", error.message);
-        res.status(500).json({ message: "Server error fetching users." });
+        console.error('Error in getAllUsers:', error);
+        res.status(500).json({ message: 'Server error.' });
     }
 };
 
-// NEW FUNCTION: Fetch all messages for a specific chat
-// @desc    Get messages between two users
-// @route   GET /api/users/messages/:otherUserId
-// @access  Private
-export const getMessages = async (req, res) => {
-    const { otherUserId } = req.params;
-    const currentUserId = req.user.id;
-
+// Controller to get messages for a specific chat
+const getMessages = async (req, res) => {
     try {
+        const { otherUserId } = req.params;
+        const currentUserId = req.user.id;
+
         const messages = await Message.find({
             $or: [
                 { senderId: currentUserId, receiverId: otherUserId },
                 { senderId: otherUserId, receiverId: currentUserId },
             ],
-        }).sort({ createdAt: 1 }); // Sort by creation time
-
+        }).sort({ createdAt: 1 }); // Sort by creation date
+        
         res.status(200).json(messages);
     } catch (error) {
-        console.error("Error fetching messages:", error.message);
-        res.status(500).json({ message: "Server error fetching messages." });
+        console.error('Error in getMessages:', error);
+        res.status(500).json({ message: 'Server error.' });
     }
 };
+
+export { registerUser, verifyOtp, loginUser, resendOtp, getAllUsers, getMessages };
