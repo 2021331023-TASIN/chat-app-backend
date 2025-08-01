@@ -1,32 +1,31 @@
 import mongoose from 'mongoose';
 
-const messageSchema = mongoose.Schema({
+const messageSchema = new mongoose.Schema({
     senderId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
-        required: true
+        required: true,
     },
     senderUsername: {
         type: String,
-        required: true
+        required: true,
     },
     receiverId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
-        required: true
+        required: true,
     },
     receiverUsername: {
         type: String,
-        required: true
+        required: true,
     },
     text: {
         type: String,
-        required: true
+        required: true,
     },
 }, {
-    timestamps: true, // This adds createdAt and updatedAt fields, which we use for sorting
+    timestamps: true, // This is the critical line
 });
 
 const Message = mongoose.model('Message', messageSchema);
-
 export default Message;
