@@ -1,8 +1,10 @@
 import User from '../Models/User.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { sendOtpEmail } from '../Utils/sendEmails.js'; // <-- Added the 's' here
+import { sendOtpEmail } from '../Utils/sendEmails.js';
 import dotenv from 'dotenv';
+// NEW IMPORT: Import the Message model
+import Message from '../Models/Message.js';
 
 dotenv.config();
 
@@ -19,11 +21,10 @@ export const registerUser = async (req, res) => {
         let user = await User.findOne({ email });
 
         if (user) {
-            // If user exists but is not verified, allow re-registration to send new OTP
             if (!user.isVerified) {
                 user.password = await bcrypt.hash(password, 10);
                 user.otp = generateOtp();
-                user.otpExpires = Date.now() + 3600000; // OTP valid for 1 hour
+                user.otpExpires = Date.now() + 3600000;
                 await user.save();
 
                 await sendOtpEmail(email, user.otp);
@@ -32,20 +33,12 @@ export const registerUser = async (req, res) => {
             return res.status(400).json({ message: 'User already registered and verified.' });
         }
 
-        // Create new user
         user = new User({ username, email, password });
-
-        // Hash password
         const salt = await bcrypt.genSalt(10);
         user.password = await bcrypt.hash(password, salt);
-
-        // Generate and save OTP
         user.otp = generateOtp();
-        user.otpExpires = Date.now() + 3600000; // OTP valid for 1 hour
-
+        user.otpExpires = Date.now() + 3600000;
         await user.save();
-
-        // Send OTP email
         await sendOtpEmail(user.email, user.otp);
 
         res.status(201).json({ message: 'User registered successfully. OTP sent to your email for verification.' });
@@ -81,8 +74,8 @@ export const verifyOtp = async (req, res) => {
         }
 
         user.isVerified = true;
-        user.otp = undefined; // Clear OTP after verification
-        user.otpExpires = undefined; // Clear OTP expiration
+        user.otp = undefined;
+        user.otpExpires = undefined;
         await user.save();
 
         const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
@@ -117,9 +110,8 @@ export const loginUser = async (req, res) => {
         }
 
         if (!user.isVerified) {
-            // Re-send OTP if user tries to log in without verification
             user.otp = generateOtp();
-            user.otpExpires = Date.now() + 3600000; // OTP valid for 1 hour
+            user.otpExpires = Date.now() + 3600000;
             await user.save();
             await sendOtpEmail(email, user.otp);
 
@@ -168,12 +160,9 @@ export const resendOtp = async (req, res) => {
             return res.status(400).json({ message: 'Email is already verified. Please proceed to login.' });
         }
 
-        // Generate new OTP
         user.otp = generateOtp();
-        user.otpExpires = Date.now() + 3600000; // OTP valid for 1 hour
+        user.otpExpires = Date.now() + 3600000;
         await user.save();
-
-        // Send new OTP email
         await sendOtpEmail(user.email, user.otp);
 
         res.status(200).json({ message: 'New OTP sent to your email.' });
@@ -184,23 +173,41 @@ export const resendOtp = async (req, res) => {
     }
 };
 
-
 // @desc    Get all registered users (for chat list)
 // @route   GET /api/users/all-users
 // @access  Private (requires token)
 export const getAllUsers = async (req, res) => {
     try {
-        // req.user.id is set by the protect middleware based on JWT
         const currentUserId = req.user.id;
-
-        // Fetch all users *except* the current authenticated user
-        // and only include verified users for chat
         const users = await User.find({ _id: { $ne: currentUserId }, isVerified: true })
-            .select('-password -otp -otpExpires -isVerified -createdAt -updatedAt'); // Exclude sensitive/unnecessary fields
+            .select('-password -otp -otpExpires -isVerified -createdAt -updatedAt');
 
         res.status(200).json(users);
     } catch (error) {
         console.error("Error fetching all users:", error.message);
         res.status(500).json({ message: "Server error fetching users." });
+    }
+};
+
+// NEW FUNCTION: Fetch all messages for a specific chat
+// @desc    Get messages between two users
+// @route   GET /api/users/messages/:otherUserId
+// @access  Private
+export const getMessages = async (req, res) => {
+    const { otherUserId } = req.params;
+    const currentUserId = req.user.id;
+
+    try {
+        const messages = await Message.find({
+            $or: [
+                { senderId: currentUserId, receiverId: otherUserId },
+                { senderId: otherUserId, receiverId: currentUserId },
+            ],
+        }).sort({ createdAt: 1 }); // Sort by creation time
+
+        res.status(200).json(messages);
+    } catch (error) {
+        console.error("Error fetching messages:", error.message);
+        res.status(500).json({ message: "Server error fetching messages." });
     }
 };
