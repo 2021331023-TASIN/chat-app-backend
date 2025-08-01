@@ -1,5 +1,5 @@
 // models/Message.js
-const mongoose = require('mongoose');
+import mongoose from 'mongoose'; // Correct import syntax
 
 const messageSchema = new mongoose.Schema(
     {
@@ -22,4 +22,5 @@ const messageSchema = new mongoose.Schema(
 );
 
 const Message = mongoose.model('Message', messageSchema);
-module.exports = Message;
+
+export default Message; // Correct export syntax

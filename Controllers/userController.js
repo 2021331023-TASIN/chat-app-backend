@@ -1,3 +1,4 @@
+// controllers/userController.js
 import User from '../Models/User.js';
 import Message from '../Models/Message.js';
 import bcrypt from 'bcryptjs';
