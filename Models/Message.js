@@ -1,31 +1,25 @@
-import mongoose from 'mongoose';
+// models/Message.js
+const mongoose = require('mongoose');
 
-const messageSchema = new mongoose.Schema({
-    senderId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-        required: true,
+const messageSchema = new mongoose.Schema(
+    {
+        senderId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User',
+            required: true,
+        },
+        receiverId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User',
+            required: true,
+        },
+        text: {
+            type: String,
+            required: true,
+        },
     },
-    senderUsername: {
-        type: String,
-        required: true,
-    },
-    receiverId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-        required: true,
-    },
-    receiverUsername: {
-        type: String,
-        required: true,
-    },
-    text: {
-        type: String,
-        required: true,
-    },
-}, {
-    timestamps: true, // This is the critical line
-});
+    { timestamps: true } // This ensures createdAt and updatedAt fields are added automatically
+);
 
 const Message = mongoose.model('Message', messageSchema);
-export default Message;
+module.exports = Message;

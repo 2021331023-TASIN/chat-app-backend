@@ -3,8 +3,9 @@ import Message from '../Models/Message.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import otpGenerator from 'otp-generator';
+import mongoose from 'mongoose';
 import { sendOtpEmail } from '../utils/sendEmails.js';
-import { io } from '../socket/socket.js'; // Import io from the new socket setup
+import { io, onlineUsers } from '../socket/socket.js'; // Import io and onlineUsers map
 
 // Controller to handle user registration
 const registerUser = async (req, res) => {
@@ -169,35 +170,44 @@ const getMessages = async (req, res) => {
     }
 };
 
-// Controller to send a new message
+// Corrected sendMessage controller to fix all identified issues
 const sendMessage = async (req, res) => {
     try {
-        const { message } = req.body;
+        // Correctly destructure `text` from the request body
+        const { text } = req.body; 
         const { otherUserId } = req.params;
         const senderId = req.user.id;
-        const senderUsername = req.user.username;
+
+        // Find the receiver to get their username
+        const receiver = await User.findById(otherUserId).select('username');
+        if (!receiver) {
+            return res.status(404).json({ message: 'Receiver not found.' });
+        }
 
         const newMessage = new Message({
             senderId,
-            senderUsername,
             receiverId: otherUserId,
-            receiverUsername: await User.findById(otherUserId).select('username'),
-            text: message,
+            text,
         });
 
-        await newMessage.save();
+        const savedMessage = await newMessage.save();
 
-        // Get the recipient's socket ID from the onlineUsers map
-        const receiverSocketId = onlineUsers.get(otherUserId);
+        // Populate the message with sender and receiver usernames before sending to client
+        const populatedMessage = await Message.findById(savedMessage._id)
+            .populate('senderId', 'username')
+            .populate('receiverId', 'username');
+
+        // Get the recipient's socket ID from the onlineUsers object
+        const receiverSocketId = onlineUsers[otherUserId];
         if (receiverSocketId) {
             // Emit the new message to the recipient in real-time
-            io.to(receiverSocketId).emit('newMessage', newMessage);
+            io.to(receiverSocketId).emit('newMessage', populatedMessage);
         }
 
-        res.status(201).json(newMessage);
+        res.status(201).json(populatedMessage);
     } catch (error) {
         console.error('Error in sendMessage:', error);
-        res.status(500).json({ message: 'Server error.' });
+        res.status(500).json({ message: 'Server error.', details: error.message });
     }
 };
 
