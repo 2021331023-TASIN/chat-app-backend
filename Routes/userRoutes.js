@@ -1,6 +1,6 @@
 import express from 'express';
-// Make sure to add 'getMessages' to the import list
-import { registerUser, verifyOtp, loginUser, resendOtp, getAllUsers, getMessages } from '../Controllers/userController.js'; 
+// Make sure to add 'getMessages' and 'updateAvatar' to the import list
+import { registerUser, verifyOtp, loginUser, resendOtp, getAllUsers, getMessages, updateAvatar } from '../Controllers/userController.js'; 
 import { protect } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
@@ -15,5 +15,8 @@ router.get('/all-users', protect, getAllUsers);
 
 // NEW ROUTE: Fetch all messages for a specific chat, protected by auth
 router.get('/messages/:otherUserId', protect, getMessages);
+
+// ✅ NEW ROUTE: Update user's avatar, protected by auth
+router.put('/avatar', protect, updateAvatar);
 
 export default router;

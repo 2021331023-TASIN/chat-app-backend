@@ -26,6 +26,11 @@ const userSchema = new mongoose.Schema({
     otpExpires: {
         type: Date,
     },
+    // ✅ NEW FIELD: Add the avatarUrl field here with a default value
+    avatarUrl: {
+        type: String,
+        default: 'https://i.ibb.co/3s3p72d/avatar1.png', 
+    },
 }, {
     timestamps: true, // Adds createdAt and updatedAt fields
 });
